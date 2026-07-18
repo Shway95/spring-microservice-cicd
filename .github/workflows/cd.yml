@@ -1,0 +1,158 @@
+name: CD Pipeline - Build, Push & Deploy
+
+# Triggers on merge to main/dev/test/prod
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - test
+      - prod
+
+env:
+  DOCKER_IMAGE: shway95/spring-microservice
+  GITOPS_REPO: Shway95/spring-microservice-gitops
+
+jobs:
+  build-test-scan:
+    name: Build, Test & Security Scan
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build application
+        run: ./gradlew build --no-daemon
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+      - name: Generate test coverage
+        run: ./gradlew jacocoTestReport --no-daemon
+
+      # Secret Scanning
+      - name: Gitleaks - Secret Scanning
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Generate image tag
+      - name: Generate image tag
+        id: meta
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TAG="${BRANCH}-${SHORT_SHA}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Image tag: $TAG"
+
+      # Build Docker image
+      - name: Build Docker image
+        run: docker build -t ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }} .
+
+      # Scan Docker image for vulnerabilities
+      - name: Trivy - Image Vulnerability Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      # Push to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }}
+          docker tag ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }} ${{ env.DOCKER_IMAGE }}:latest
+          docker push ${{ env.DOCKER_IMAGE }}:latest
+
+  update-gitops:
+    name: Update GitOps Repo
+    needs: build-test-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitOps repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.GITOPS_REPO }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: gitops
+
+      - name: Determine environment
+        id: env
+        run: |
+          BRANCH=${GITHUB_REF#refs/heads/}
+          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "prod" ]; then
+            echo "env=prod" >> $GITHUB_OUTPUT
+          elif [ "$BRANCH" = "test" ]; then
+            echo "env=test" >> $GITHUB_OUTPUT
+          else
+            echo "env=dev" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update image tag in GitOps repo
+        run: |
+          cd gitops/${{ steps.env.outputs.env }}
+          sed -i "s|image:.*|image: ${{ env.DOCKER_IMAGE }}:${{ needs.build-test-scan.outputs.image_tag }}|" deployment.yml
+          echo "Updated image tag to: ${{ needs.build-test-scan.outputs.image_tag }}"
+
+      - name: Commit and push
+        run: |
+          cd gitops
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Update ${{ steps.env.outputs.env }} image to ${{ needs.build-test-scan.outputs.image_tag }}"
+          git push
+
+  health-check:
+    name: Post-Deploy Health Check
+    needs: update-gitops
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for ArgoCD sync
+        run: sleep 60
+
+      - name: Health check
+        run: |
+          echo "Waiting for ArgoCD to sync and deploy..."
+          echo "In a real setup, you would curl your app's health endpoint:"
+          echo "curl -f http://your-app-url/actuator/health"
+          # curl -f http://your-app-url/actuator/health || exit 1
+
+  notify:
+    name: Notify Team
+    needs: [build-test-scan, update-gitops]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Send notification
+        run: |
+          if [ "${{ needs.build-test-scan.result }}" = "success" ] && [ "${{ needs.update-gitops.result }}" = "success" ]; then
+            echo "✅ Deployment successful! Image: ${{ needs.build-test-scan.outputs.image_tag }}"
+            # Uncomment for Slack:
+            # curl -X POST -H 'Content-type: application/json' --data '{"text":"✅ Deployed ${{ needs.build-test-scan.outputs.image_tag }}"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+          else
+            echo "❌ Pipeline failed!"
+            # curl -X POST -H 'Content-type: application/json' --data '{"text":"❌ Pipeline failed!"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+          fi

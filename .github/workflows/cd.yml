@@ -10,7 +10,7 @@ on:
       - prod
 
 env:
-  DOCKER_IMAGE: shway95/spring-microservice
+  DOCKER_IMAGE: shwetang95/spring-microservice
   GITOPS_REPO: Shway95/spring-microservice-gitops
 
 jobs:

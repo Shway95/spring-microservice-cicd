@@ -85,13 +85,15 @@ jobs:
 
       # Build Docker image
       - name: Build Docker image
-        run: docker build -t ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }} .
+        run: |
+          docker build -t ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version }} .
+          docker tag ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version }} ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }}
 
       # Scan Docker image for vulnerabilities
       - name: Trivy - Image Vulnerability Scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }}'
+          image-ref: '${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version }}'
           format: 'table'
           exit-code: '0'
           ignore-unfixed: true
@@ -106,8 +108,9 @@ jobs:
 
       - name: Push Docker image
         run: |
+          docker push ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version }}
           docker push ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }}
-          docker tag ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }} ${{ env.DOCKER_IMAGE }}:latest
+          docker tag ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version }} ${{ env.DOCKER_IMAGE }}:latest
           docker push ${{ env.DOCKER_IMAGE }}:latest
 
   update-gitops:
@@ -137,8 +140,8 @@ jobs:
       - name: Update image tag in GitOps repo
         run: |
           cd gitops/${{ steps.env.outputs.env }}
-          sed -i "s|image:.*|image: ${{ env.DOCKER_IMAGE }}:${{ needs.build-test-scan.outputs.image_tag }}|" deployment.yml
-          echo "Updated image tag to: ${{ needs.build-test-scan.outputs.image_tag }}"
+          sed -i "s|image:.*|image: ${{ env.DOCKER_IMAGE }}:${{ needs.build-test-scan.outputs.version }}|" deployment.yml
+          echo "Updated image tag to: ${{ needs.build-test-scan.outputs.version }}"
 
       - name: Commit and push
         run: |
@@ -146,7 +149,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
-          git commit -m "Update ${{ steps.env.outputs.env }} image to ${{ needs.build-test-scan.outputs.image_tag }}"
+          git commit -m "Deploy ${{ needs.build-test-scan.outputs.version }} to ${{ steps.env.outputs.env }}"
           git push
 
   health-check:

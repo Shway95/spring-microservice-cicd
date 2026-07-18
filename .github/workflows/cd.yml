@@ -141,35 +141,26 @@ jobs:
           # curl -f http://your-app-url/actuator/health || exit 1
 
   notify:
-    name: Notify Team
+    name: Pipeline Summary
     needs: [build-test-scan, update-gitops]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Send Teams notification
+      - name: Print deployment summary
         run: |
+          echo "=========================================="
+          echo "  DEPLOYMENT SUMMARY"
+          echo "=========================================="
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Image Tag: ${{ needs.build-test-scan.outputs.image_tag }}"
+          echo "Triggered by: ${{ github.actor }}"
+          echo "Build: ${{ needs.build-test-scan.result }}"
+          echo "GitOps Update: ${{ needs.update-gitops.result }}"
+          echo "=========================================="
           if [ "${{ needs.build-test-scan.result }}" = "success" ] && [ "${{ needs.update-gitops.result }}" = "success" ]; then
-            STATUS="✅ Deployment Successful"
-            COLOR="00FF00"
+            echo "✅ Deployment successful!"
           else
-            STATUS="❌ Pipeline Failed"
-            COLOR="FF0000"
+            echo "❌ Pipeline failed!"
+            exit 1
           fi
-
-          curl -H "Content-Type: application/json" -d '{
-            "@type": "MessageCard",
-            "@context": "http://schema.org/extensions",
-            "themeColor": "'"$COLOR"'",
-            "summary": "'"$STATUS"'",
-            "sections": [{
-              "activityTitle": "'"$STATUS"'",
-              "facts": [
-                { "name": "Repository", "value": "${{ github.repository }}" },
-                { "name": "Branch", "value": "${{ github.ref_name }}" },
-                { "name": "Image Tag", "value": "${{ needs.build-test-scan.outputs.image_tag }}" },
-                { "name": "Triggered by", "value": "${{ github.actor }}" },
-                { "name": "Commit", "value": "${{ github.event.head_commit.message }}" }
-              ],
-              "markdown": true
-            }]
-          }' ${{ secrets.TEAMS_WEBHOOK_URL }}

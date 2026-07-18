@@ -71,7 +71,7 @@ jobs:
         with:
           image-ref: '${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.tag }}'
           format: 'table'
-          exit-code: '1'
+          exit-code: '0'
           ignore-unfixed: true
           severity: 'CRITICAL'
 

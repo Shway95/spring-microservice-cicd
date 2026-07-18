@@ -126,7 +126,7 @@ jobs:
         id: env
         run: |
           BRANCH=${GITHUB_REF#refs/heads/}
-          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "prod" ]; then
+          if [ "$BRANCH" = "prod" ]; then
             echo "env=prod" >> $GITHUB_OUTPUT
           elif [ "$BRANCH" = "test" ]; then
             echo "env=test" >> $GITHUB_OUTPUT

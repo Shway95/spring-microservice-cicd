@@ -35,13 +35,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build application
-        run: ./gradlew build --no-daemon
+        run: gradle build --no-daemon
 
       - name: Run tests
-        run: ./gradlew test --no-daemon
+        run: gradle test --no-daemon
 
       - name: Generate test coverage report
-        run: ./gradlew jacocoTestReport --no-daemon
+        run: gradle jacocoTestReport --no-daemon
 
       # Secret Scanning
       - name: Gitleaks - Secret Scanning

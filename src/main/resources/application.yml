@@ -1,9 +1,15 @@
 spring:
   application:
     name: spring-microservice-cicd
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:microservice_dev}
+    username: ${DB_USERNAME:admin}
+    password: ${DB_PASSWORD:password}
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 management:
   endpoints:
@@ -13,3 +19,8 @@ management:
   endpoint:
     health:
       show-details: always
+
+app:
+  api-base-url: ${API_BASE_URL:http://localhost:8080}
+  api-key: ${API_KEY:default-key}
+  log-level: ${LOG_LEVEL:DEBUG}

@@ -146,13 +146,30 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Send notification
+      - name: Send Teams notification
         run: |
           if [ "${{ needs.build-test-scan.result }}" = "success" ] && [ "${{ needs.update-gitops.result }}" = "success" ]; then
-            echo "✅ Deployment successful! Image: ${{ needs.build-test-scan.outputs.image_tag }}"
-            # Uncomment for Slack:
-            # curl -X POST -H 'Content-type: application/json' --data '{"text":"✅ Deployed ${{ needs.build-test-scan.outputs.image_tag }}"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+            STATUS="✅ Deployment Successful"
+            COLOR="00FF00"
           else
-            echo "❌ Pipeline failed!"
-            # curl -X POST -H 'Content-type: application/json' --data '{"text":"❌ Pipeline failed!"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+            STATUS="❌ Pipeline Failed"
+            COLOR="FF0000"
           fi
+
+          curl -H "Content-Type: application/json" -d '{
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            "themeColor": "'"$COLOR"'",
+            "summary": "'"$STATUS"'",
+            "sections": [{
+              "activityTitle": "'"$STATUS"'",
+              "facts": [
+                { "name": "Repository", "value": "${{ github.repository }}" },
+                { "name": "Branch", "value": "${{ github.ref_name }}" },
+                { "name": "Image Tag", "value": "${{ needs.build-test-scan.outputs.image_tag }}" },
+                { "name": "Triggered by", "value": "${{ github.actor }}" },
+                { "name": "Commit", "value": "${{ github.event.head_commit.message }}" }
+              ],
+              "markdown": true
+            }]
+          }' ${{ secrets.TEAMS_WEBHOOK_URL }}

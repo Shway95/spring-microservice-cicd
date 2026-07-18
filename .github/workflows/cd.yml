@@ -12,6 +12,7 @@ on:
 env:
   DOCKER_IMAGE: shwetang95/spring-microservice
   GITOPS_REPO: Shway95/spring-microservice-gitops
+  APP_NAME: spring-microservice
 
 jobs:
   build-test-scan:
@@ -139,9 +140,9 @@ jobs:
 
       - name: Update image tag in GitOps repo
         run: |
-          cd gitops/${{ steps.env.outputs.env }}
+          cd gitops/${{ steps.env.outputs.env }}/${{ env.APP_NAME }}
           sed -i "s|image:.*|image: ${{ env.DOCKER_IMAGE }}:${{ needs.build-test-scan.outputs.version }}|" deployment.yml
-          echo "Updated image tag to: ${{ needs.build-test-scan.outputs.version }}"
+          echo "Updated ${{ env.APP_NAME }} image to: ${{ needs.build-test-scan.outputs.version }}"
 
       - name: Commit and push
         run: |
